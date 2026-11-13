@@ -35,7 +35,6 @@
     font-weight: 600; font-size: 17px; text-decoration: none;
   }
   .fine { color: var(--muted); font-size: 12px; margin-top: 20px; }
-  .fine a { color: inherit; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -49,7 +48,6 @@
   <p class="pitch" id="pitch">ChatDays is an iPhone app. Friends with the app see this countdown update by itself, right inside Messages.</p>
   <a class="button" id="get" href="#">Get ChatDays</a>
   <p class="fine">This page works out the countdown in your browser. The event details never leave your device.</p>
-  <p class="fine"><a href="privacy.html">Privacy</a> &middot; <a href="support.html">Support</a></p>
 </main>
 <script>
 (function () {
@@ -109,10 +107,31 @@
   var dateText = new Intl.DateTimeFormat(undefined,
     { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(event.utc));
 
-  function headline(days) {
+  // "u=1" means keep counting after the date (anniversaries): days since.
+  var countsUp = params.get("u") === "1";
+
+  // Whole calendar years, then whole months beyond them (a month counts once its day-of-month
+  // has been reached, clamped for short months, like the app).
+  function breakdown(now) {
+    var ty = now.getFullYear(), tm = now.getMonth() + 1, td = now.getDate();
+    var total = (ty - event.y) * 12 + (tm - event.m);
+    var anniversaryDay = Math.min(event.d, new Date(ty, tm, 0).getDate());
+    if (td < anniversaryDay) total -= 1;
+    return { years: Math.floor(total / 12), months: total % 12 };
+  }
+
+  function headline(days, parts) {
     if (days > 1) return days + " DAYS";
     if (days === 1) return "TOMORROW";
     if (days === 0) return "TODAY!";
+    if (countsUp) {
+      if (parts.years >= 1) {
+        var y = parts.years === 1 ? "1 YEAR" : parts.years + " YEARS";
+        if (parts.months === 0) return y;
+        return y + ", " + (parts.months === 1 ? "1 MONTH" : parts.months + " MONTHS");
+      }
+      return days === -1 ? "1 DAY" : (-days) + " DAYS";
+    }
     return "EVENT PASSED";
   }
 
@@ -120,13 +139,17 @@
     var now = new Date();
     var today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());   // the viewer's local calendar day
     var days = Math.round((event.utc - today) / 86400000);
-    document.getElementById("headline").textContent = headline(days);
+    var parts = breakdown(now);
+    var head = headline(days, parts);
+    document.getElementById("headline").textContent = head;
     document.getElementById("title").textContent = (emoji ? emoji + " " : "") + (title || "Countdown");
-    document.getElementById("date").textContent = dateText;
-    card.setAttribute("aria-label", headline(days) + ", " + (title || "countdown") + ", " + dateText);
+    var since = countsUp && days < 0;
+    var more = since && parts.years >= 1 ? " \u00B7 " + (-days).toLocaleString() + " days" : "";
+    document.getElementById("date").textContent = (since ? "Since " : "") + dateText + more;
+    card.setAttribute("aria-label", head + ", " + (title || "countdown") + ", " + dateText);
     document.getElementById("pitch").textContent =
       "This countdown is live. Get ChatDays to send your own, and to see countdowns update by themselves inside Messages.";
-    document.title = headline(days) + " \u00B7 " + (title || "ChatDays");
+    document.title = head + " \u00B7 " + (title || "ChatDays");
   }
 
   function scheduleNextMidnight() {
